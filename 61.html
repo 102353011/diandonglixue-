@@ -1,0 +1,394 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>伽利略变换：牛顿与麦克斯韦的碰撞 (3D演示 + 解答)</title>
+    <style>
+        body { margin: 0; overflow: hidden; font-family: 'Microsoft YaHei', sans-serif; background-color: #111; color: #fff; }
+        #canvas-container { width: 100vw; height: 100vh; display: block; }
+        
+        /* UI 覆盖层 */
+        .ui-panel {
+            position: absolute;
+            background: rgba(20, 20, 30, 0.85);
+            padding: 20px;
+            border-radius: 12px;
+            border-left: 5px solid #4CAF50;
+            backdrop-filter: blur(10px);
+            box-shadow: 0 4px 15px rgba(0,0,0,0.5);
+            max-width: 400px;
+            pointer-events: none;
+        }
+        #panel-left { top: 20px; left: 20px; border-left-color: #2196F3; }
+        #panel-right { top: 20px; right: 20px; border-left-color: #FF9800; }
+        
+        h2 { margin: 0 0 10px 0; font-size: 18px; }
+        p { margin: 5px 0; font-size: 14px; line-height: 1.5; color: #ccc; }
+        
+        .highlight { color: #4CAF50; font-weight: bold; }
+        .warning { color: #ff5555; font-weight: bold; }
+        
+        /* 底部控制栏 */
+        #controls {
+            position: absolute;
+            bottom: 30px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: rgba(0,0,0,0.7);
+            padding: 15px 30px;
+            border-radius: 30px;
+            display: flex;
+            gap: 20px;
+            align-items: center;
+            pointer-events: auto;
+            border: 1px solid #444;
+            z-index: 10;
+        }
+        button {
+            background: #333;
+            color: white;
+            border: 1px solid #555;
+            padding: 8px 16px;
+            border-radius: 20px;
+            cursor: pointer;
+            transition: all 0.3s;
+            font-size: 14px;
+        }
+        button:hover { background: #555; }
+        
+        /* 数值显示 */
+        .data-value { font-family: monospace; font-size: 16px; color: #00e5ff; }
+
+        /* === 新增：解题解析面板 (左侧偏下) === */
+        #solution-panel {
+            position: absolute;
+            bottom: 100px; /* 在底部控制栏上方 */
+            left: 20px;
+            width: 380px;
+            background: rgba(10, 10, 15, 0.9);
+            border: 1px solid #444;
+            border-radius: 8px;
+            padding: 15px;
+            backdrop-filter: blur(5px);
+            font-size: 13px;
+            color: #ddd;
+            pointer-events: auto;
+            max-height: 40vh;
+            overflow-y: auto;
+            box-shadow: 0 4px 10px rgba(0,0,0,0.5);
+        }
+        #solution-panel h3 {
+            margin: 0 0 10px 0;
+            font-size: 15px;
+            color: #00e5ff;
+            border-bottom: 1px solid #333;
+            padding-bottom: 5px;
+        }
+        .math-block {
+            background: #1a1a24;
+            padding: 8px 10px;
+            margin: 8px 0;
+            border-radius: 4px;
+            font-family: 'Courier New', Courier, monospace;
+            color: #e0e0e0;
+            border-left: 3px solid #555;
+            line-height: 1.6;
+        }
+        .math-block .blue { color: #64b5f6; }
+        .math-block .red { color: #ef5350; }
+        .math-block .green { color: #81c784; }
+        .conclusion { font-weight: bold; margin-top: 10px; display: block;}
+    </style>
+</head>
+<body>
+
+    <!-- 左侧：牛顿定律展示 -->
+    <div id="panel-left" class="ui-panel">
+        <h2 style="color: #2196F3;">🚄 牛顿定律的协变性</h2>
+        <p>参考系以恒定速度 <span class="highlight">v</span> 向右运动。</p>
+        <p>在车内外观察：</p>
+        <p>• 加速度 <span class="highlight">a</span> 保持不变</p>
+        <p>• 力 <span class="highlight">F</span> 保持不变</p>
+        <p>结论：<strong style="color:#4CAF50;">F = ma 形式不变 (协变)</strong></p>
+        <div style="margin-top:10px; border-top:1px solid #333; padding-top:10px;">
+            <p>小车加速度: <span class="data-value" id="accel-val">0.00</span></p>
+            <p>相对速度 v: <span class="data-value" id="vel-val">0.00</span> c</p>
+        </div>
+    </div>
+
+    <!-- 右侧：麦克斯韦方程展示 -->
+    <div id="panel-right" class="ui-panel">
+        <h2 style="color: #FF9800;">🌊 麦克斯韦方程的困境</h2>
+        <p>光速 <span class="highlight">c</span> 是常数。</p>
+        <p>伽利略速度叠加下：</p>
+        <p>观测到的光速 = <span class="warning">c ± v</span></p>
+        <p>结论：<strong style="color:#ff5555;">麦克斯韦方程形式改变 (不协变)</strong></p>
+        <div style="margin-top:10px; border-top:1px solid #333; padding-top:10px;">
+            <p>波前观测速度: <span class="data-value" id="c-val">1.00</span> c</p>
+        </div>
+    </div>
+
+    <!-- 底部控制栏 -->
+    <div id="controls">
+        <span style="font-size:14px; color:#aaa;">改变参考系速度 v:</span>
+        <input type="range" id="speed-slider" min="0" max="0.9" step="0.01" value="0.2" style="width: 150px;">
+        <button id="btn-reset">重置</button>
+    </div>
+
+    <!-- === 新增：解题解析面板 === -->
+    <div id="solution-panel">
+        <h3>📝 解题解析 (数学证明)</h3>
+        
+        <div style="margin-bottom: 10px;">
+            <strong style="color:#2196F3;">1. 伽利略变换</strong>
+            <div class="math-block">
+                设 S 系静止，S' 系以速度 v 沿 x 轴运动。<br>
+                坐标变换：<br>
+                <span class="blue">x' = x - vt</span><br>
+                <span class="blue">y' = y, z' = z</span><br>
+                <span class="blue">t' = t</span> (绝对时间)
+            </div>
+        </div>
+
+        <div style="margin-bottom: 10px;">
+            <strong style="color:#4CAF50;">2. 牛顿定律协变性证明</strong>
+            <div class="math-block">
+                对坐标求导得速度变换：<br>
+                <span class="green">u' = dx'/dt = u - v</span><br>
+                再对时间求导得加速度变换：<br>
+                <span class="green">a' = du'/dt = du/dt = a</span><br>
+                (因为 v 是常数，dv/dt = 0)<br>
+                在经典力学中，质量 m 和力 F 是伽利略不变量：<br>
+                <span class="green">m' = m, F' = F</span><br>
+                因此，在 S' 系中：<br>
+                <span class="green">F' = m'a' = ma = F</span><br>
+                <span class="conclusion" style="color:#4CAF50;">结论：F = ma 形式不变，牛顿定律协变。</span>
+            </div>
+        </div>
+
+        <div>
+            <strong style="color:#FF9800;">3. 麦克斯韦方程不协变性证明</strong>
+            <div class="math-block">
+                麦克斯韦方程导出电磁波速度：<br>
+                <span class="red">c = 1 / √(ε₀μ₀) (常数)</span><br>
+                根据伽利略速度叠加原理：<br>
+                若光沿 x 轴正向传播，S 系中光速为 c。<br>
+                在 S' 系中观察，光速应为：<br>
+                <span class="red">c' = c - v</span><br>
+                显然 c' ≠ c，光速不再是常数。<br>
+                这意味着麦克斯韦方程组在 S' 系中形式发生改变（包含光速的项不再匹配）。<br>
+                <span class="conclusion" style="color:#ff5555;">结论：麦克斯韦方程在伽利略变换下不协变。</span>
+            </div>
+        </div>
+    </div>
+
+    <!-- 引入 Three.js -->
+    <script type="importmap">
+        {
+            "imports": {
+                "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+                "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
+            }
+        }
+    </script>
+
+    <script type="module">
+        import * as THREE from 'three';
+        import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+
+        // 1. 基础场景设置
+        const scene = new THREE.Scene();
+        scene.background = new THREE.Color(0x111122);
+        scene.fog = new THREE.Fog(0x111122, 20, 50);
+
+        const camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 100);
+        camera.position.set(10, 8, 20);
+        
+        const renderer = new THREE.WebGLRenderer({ antialias: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        renderer.setPixelRatio(window.devicePixelRatio);
+        document.body.appendChild(renderer.domElement);
+
+        const controls = new OrbitControls(camera, renderer.domElement);
+        controls.enableDamping = true;
+        controls.target.set(0, 2, 0);
+
+        // 2. 灯光
+        const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
+        scene.add(ambientLight);
+        
+        const dirLight = new THREE.DirectionalLight(0xffffff, 1);
+        dirLight.position.set(10, 20, 10);
+        scene.add(dirLight);
+
+        // 3. 环境元素
+        const gridHelper = new THREE.GridHelper(40, 40, 0x444466, 0x222244);
+        gridHelper.position.y = -0.01;
+        scene.add(gridHelper);
+
+        const starsGeometry = new THREE.BufferGeometry();
+        const starsCount = 2000;
+        const posArray = new Float32Array(starsCount * 3);
+        for(let i=0; i<starsCount * 3; i+=3) {
+            posArray[i] = (Math.random() - 0.5) * 100;
+            posArray[i+1] = (Math.random() - 0.5) * 100;
+            posArray[i+2] = (Math.random() - 0.5) * 100;
+        }
+        starsGeometry.setAttribute('position', new THREE.BufferAttribute(posArray, 3));
+        const starsMaterial = new THREE.PointsMaterial({color: 0x888888, size: 0.1});
+        scene.add(new THREE.Points(starsGeometry, starsMaterial));
+
+        // 4. 左侧演示：牛顿定律
+        const cartGroup = new THREE.Group();
+        cartGroup.position.set(-8, 0, 0);
+        scene.add(cartGroup);
+
+        const cartBody = new THREE.Mesh(
+            new THREE.BoxGeometry(3, 0.5, 2),
+            new THREE.MeshStandardMaterial({ color: 0x2196F3, metalness: 0.5, roughness: 0.2 })
+        );
+        cartBody.position.y = 0.25;
+        cartGroup.add(cartBody);
+
+        const wheelGeo = new THREE.CylinderGeometry(0.3, 0.3, 0.2, 16);
+        wheelGeo.rotateZ(Math.PI / 2);
+        const wheelMat = new THREE.MeshStandardMaterial({ color: 0x333333 });
+        const wheelPositions = [[-1, 0.3, -0.8], [1, 0.3, -0.8], [-1, 0.3, 0.8], [1, 0.3, 0.8]];
+        wheelPositions.forEach(pos => {
+            const wheel = new THREE.Mesh(wheelGeo, wheelMat);
+            wheel.position.set(...pos);
+            cartGroup.add(wheel);
+        });
+
+        const ball = new THREE.Mesh(
+            new THREE.SphereGeometry(0.4, 32, 32),
+            new THREE.MeshStandardMaterial({ color: 0xffaa00, emissive: 0x442200 })
+        );
+        ball.position.set(0, 0.9, 0);
+        cartGroup.add(ball);
+
+        const arrowDir = new THREE.ArrowHelper(new THREE.Vector3(1, 0, 0), new THREE.Vector3(0, 0.9, 0), 1.5, 0xff0000, 0.5, 0.3);
+        cartGroup.add(arrowDir);
+
+        // 5. 右侧演示：麦克斯韦方程
+        const maxwellGroup = new THREE.Group();
+        maxwellGroup.position.set(8, 0, 0);
+        scene.add(maxwellGroup);
+
+        const mGrid = new THREE.GridHelper(10, 20, 0x333333, 0x222222);
+        mGrid.position.y = 0;
+        maxwellGroup.add(mGrid);
+
+        const wavePoints = [];
+        const waveLength = 4;
+        const amplitude = 2;
+        for (let i = 0; i <= 100; i++) {
+            const x = (i / 100) * 10 - 5; 
+            const y = Math.sin((x / waveLength) * Math.PI * 2) * amplitude;
+            wavePoints.push(new THREE.Vector3(x, y, 0));
+        }
+        const waveGeometry = new THREE.BufferGeometry().setFromPoints(wavePoints);
+        const waveMaterial = new THREE.LineBasicMaterial({ color: 0xff9800, linewidth: 2 });
+        const waveLine = new THREE.Line(waveGeometry, waveMaterial);
+        waveLine.position.y = 2;
+        maxwellGroup.add(waveLine);
+
+        const photonGeo = new THREE.SphereGeometry(0.15, 16, 16);
+        const photonMat = new THREE.MeshBasicMaterial({ color: 0xffcc00 });
+        const photon = new THREE.Mesh(photonGeo, photonMat);
+        photon.position.y = 2;
+        maxwellGroup.add(photon);
+
+        const arrowHelperC = new THREE.ArrowHelper(new THREE.Vector3(1, 0, 0), new THREE.Vector3(-4, 2, 0), 2, 0x00ff00, 0.5, 0.3);
+        maxwellGroup.add(arrowHelperC);
+
+        // 6. 动画与交互逻辑
+        let referenceFrameVelocity = 0.2;
+        const speedSlider = document.getElementById('speed-slider');
+        const accelVal = document.getElementById('accel-val');
+        const velVal = document.getElementById('vel-val');
+        const cVal = document.getElementById('c-val');
+
+        let cartX = -8;
+        let time = 0;
+
+        speedSlider.addEventListener('input', (e) => {
+            referenceFrameVelocity = parseFloat(e.target.value);
+            velVal.textContent = referenceFrameVelocity.toFixed(2);
+            
+            let observedC = 1.0 - referenceFrameVelocity;
+            cVal.textContent = observedC.toFixed(2);
+            
+            arrowHelperC.setLength(observedC * 4, 0.5, 0.3);
+            
+            if (Math.abs(observedC - 1.0) > 0.05) {
+                arrowHelperC.setColor(new THREE.Color(0xff0000));
+                arrowHelperC.setLength(observedC * 4, 0.5, 0.3);
+            } else {
+                arrowHelperC.setColor(new THREE.Color(0x00ff00));
+            }
+        });
+
+        document.getElementById('btn-reset').addEventListener('click', () => {
+            speedSlider.value = 0.2;
+            referenceFrameVelocity = 0.2;
+            velVal.textContent = "0.20";
+            cVal.textContent = "0.80";
+            cartX = -8;
+            arrowHelperC.setColor(new THREE.Color(0xff0000));
+            arrowHelperC.setLength(0.8 * 4, 0.5, 0.3);
+        });
+
+        velVal.textContent = "0.20";
+        cVal.textContent = "0.80";
+        arrowHelperC.setColor(new THREE.Color(0xff0000));
+        arrowHelperC.setLength(0.8 * 4, 0.5, 0.3);
+
+        const clock = new THREE.Clock();
+
+        function animate() {
+            requestAnimationFrame(animate);
+            const delta = clock.getDelta();
+            time += delta;
+
+            // --- 左侧动画：小车运动 ---
+            cartX += referenceFrameVelocity * 5 * delta;
+            if (cartX > 10) cartX = -10; 
+            cartGroup.position.x = cartX;
+            
+            const ballLocalX = Math.sin(time * 2) * 1.5;
+            ball.position.x = ballLocalX;
+            
+            const accel = -4 * ballLocalX;
+            accelVal.textContent = Math.abs(accel).toFixed(2);
+
+            arrowDir.position.set(ballLocalX, 0.9, 0);
+            const forceScale = -ballLocalX * 0.5;
+            arrowDir.setLength(Math.abs(forceScale) + 0.1, 0.3, 0.2);
+            arrowDir.setDirection(new THREE.Vector3(Math.sign(forceScale), 0, 0));
+            arrowDir.setColor(new THREE.Color(0xff3333));
+
+            // --- 右侧动画：电磁波运动 ---
+            const waveSpeed = 1.0 - referenceFrameVelocity;
+            
+            photon.position.x += waveSpeed * 3 * delta * 5;
+            if (photon.position.x > 5) photon.position.x = -5;
+            
+            const yOffset = Math.sin((photon.position.x / waveLength) * Math.PI * 2) * amplitude;
+            photon.position.y = 2 + yOffset;
+
+            controls.update();
+            renderer.render(scene, camera);
+        }
+
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        });
+
+        animate();
+    </script>
+</body>
+</html>
